@@ -1,0 +1,44 @@
+# Глобальные HTTP-настройки
+http:
+  timeout_sec: 20
+  user_agent: "go_crawler/0.1 (+https://example.local)"
+  max_retries: 2
+  retry_backoff_ms: 300
+
+# Набор задач (job'ов). Каждая задача может быть включена/выключена, имеет тип и набор URL'ов
+items:
+  # 1) Скачать одну страницу (type: page)
+  - enabled: true
+    type: page                # page | pages | site
+    urls:
+      - "https://example.com/"
+    output_dir: "out/page_example"
+    include_assets: true
+    asset_types: ["css", "js", "img"]  # css, js, img, font, media
+    same_host_only: true
+    max_depth: 0    # не используется для page
+    max_pages: 0    # не используется для page
+
+  # 2) Обход нескольких страниц по ссылкам в пределах того же хоста (type: pages)
+  - enabled: false
+    type: pages
+    urls:
+      - "https://example.com/"
+    output_dir: "out/pages_example"
+    include_assets: true
+    asset_types: ["css", "js", "img", "font"]
+    same_host_only: true
+    max_depth: 2     # глубина обхода
+    max_pages: 50    # ограничение по количеству страниц
+
+  # 3) Сохранение сайта (аналог pages, но обычно с включённым same_host_only)
+  - enabled: false
+    type: site
+    urls:
+      - "https://example.com/"
+    output_dir: "out/site_example"
+    include_assets: true
+    asset_types: ["css", "js", "img", "font", "media"]
+    same_host_only: true
+    max_depth: 3
+    max_pages: 200
