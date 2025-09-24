@@ -1,13 +1,13 @@
-# Глобальные HTTP-настройки
+# Global HTTP settings
 http:
   timeout_sec: 20
   user_agent: "go_crawler/0.1 (+https://example.local)"
   max_retries: 2
   retry_backoff_ms: 300
 
-# Набор задач (job'ов). Каждая задача может быть включена/выключена, имеет тип и набор URL'ов
+# Set of crawl jobs. Each job can be enabled/disabled, has a type and a list of URLs
 items:
-  # 1) Скачать одну страницу (type: page)
+  # 1) Download a single page (type: page)
   - enabled: true
     type: page                # page | pages | site
     urls:
@@ -16,10 +16,10 @@ items:
     include_assets: true
     asset_types: ["css", "js", "img"]  # css, js, img, font, media
     same_host_only: true
-    max_depth: 0    # не используется для page
-    max_pages: 0    # не используется для page
+    max_depth: 0    # not used for page
+    max_pages: 0    # not used for page
 
-  # 2) Обход нескольких страниц по ссылкам в пределах того же хоста (type: pages)
+  # 2) Crawl multiple pages by following links on the same host (type: pages)
   - enabled: false
     type: pages
     urls:
@@ -28,10 +28,10 @@ items:
     include_assets: true
     asset_types: ["css", "js", "img", "font"]
     same_host_only: true
-    max_depth: 2     # глубина обхода
-    max_pages: 50    # ограничение по количеству страниц
+    max_depth: 2     # crawl depth
+    max_pages: 50    # limit number of pages
 
-  # 3) Сохранение сайта (аналог pages, но обычно с включённым same_host_only)
+  # 3) Save a site (similar to pages, typically with same_host_only enabled)
   - enabled: false
     type: site
     urls:

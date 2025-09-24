@@ -6,7 +6,7 @@ import (
 	"golang.org/x/net/html"
 )
 
-// Конфигурация приложения
+// App configuration
 type Config struct {
 	Items []Job      `yaml:"items"`
 	HTTP  HTTPConfig `yaml:"http"`
@@ -19,7 +19,7 @@ type HTTPConfig struct {
 	RetryBackoffMs int    `yaml:"retry_backoff_ms"`
 }
 
-// Описание задания
+// Job description
 type Job struct {
 	Enabled       bool     `yaml:"enabled"`
 	Type          string   `yaml:"type"` // "page" | "pages" | "site"
@@ -28,8 +28,8 @@ type Job struct {
 	IncludeAssets bool     `yaml:"include_assets"`
 	AssetTypes    []string `yaml:"asset_types"` // css, js, img, font, media
 	SameHostOnly  bool     `yaml:"same_host_only"`
-	MaxDepth      int      `yaml:"max_depth"` // 0 - без ограничения
-	MaxPages      int      `yaml:"max_pages"` // 0 - без ограничения
+	MaxDepth      int      `yaml:"max_depth"` // 0 - no limit
+	MaxPages      int      `yaml:"max_pages"` // 0 - no limit
 }
 
 type crawlQueueItem struct {
@@ -48,7 +48,7 @@ const (
 	assetOTHER assetRefKind = "other"
 )
 
-// Ссылка на ассет в DOM c доп. информацией
+// Reference to an asset in the DOM with extra info
 type assetRef struct {
 	node      *html.Node
 	attrIndex int
@@ -56,5 +56,5 @@ type assetRef struct {
 	kind      assetRefKind
 	// srcset
 	isSrcset bool
-	desc     string // дескриптор srcset (например, "1x", "480w")
+	desc     string // srcset descriptor (e.g., "1x", "480w")
 }

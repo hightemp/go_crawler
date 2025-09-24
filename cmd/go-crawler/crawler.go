@@ -20,14 +20,14 @@ import (
 	"golang.org/x/net/html"
 )
 
-// ---------- job runner ----------
+// Job runner and crawling core
 
 func runJob(job Job, client *http.Client, ua string, retries int, backoffMs int) error {
 	if len(job.Urls) == 0 {
-		return fmt.Errorf("job без urls")
+		return fmt.Errorf("job without urls")
 	}
 	if strings.TrimSpace(job.OutputDir) == "" {
-		return fmt.Errorf("job без output_dir")
+		return fmt.Errorf("job without output_dir")
 	}
 	job.Type = strings.ToLower(strings.TrimSpace(job.Type))
 	if job.Type == "" {
@@ -43,7 +43,7 @@ func runJob(job Job, client *http.Client, ua string, retries int, backoffMs int)
 	}
 
 	if err := os.MkdirAll(job.OutputDir, 0o755); err != nil {
-		return fmt.Errorf("создание каталога вывода: %w", err)
+		return fmt.Errorf("create output directory: %w", err)
 	}
 
 	// allowed hosts
@@ -59,11 +59,11 @@ func runJob(job Job, client *http.Client, ua string, retries int, backoffMs int)
 		for _, s := range job.Urls {
 			u := parseURL(s)
 			if u == nil {
-				log.Printf("Пропуск некорректного URL: %s", s)
+				log.Printf("Skipping invalid URL: %s", s)
 				continue
 			}
 			if err := crawlSinglePage(u, job, client, ua, retries, backoffMs, assetAllowed); err != nil {
-				log.Printf("Ошибка скачивания страницы %s: %v", u.String(), err)
+				log.Printf("Error downloading page %s: %v", u.String(), err)
 			}
 		}
 	case "pages", "site":
@@ -71,12 +71,12 @@ func runJob(job Job, client *http.Client, ua string, retries int, backoffMs int)
 			return err
 		}
 	default:
-		return fmt.Errorf("неизвестный type: %s", job.Type)
+		return fmt.Errorf("unknown job type: %s", job.Type)
 	}
 	return nil
 }
 
-// ---------- crawling ----------
+// Crawling
 
 func crawlSinglePage(u *url.URL, job Job, client *http.Client, ua string, retries int, backoffMs int, assetAllowed map[string]bool) error {
 	visitedAssets := make(map[string]bool)
@@ -116,12 +116,12 @@ func bfsCrawl(job Job, client *http.Client, ua string, retries int, backoffMs in
 
 		links, err := fetchProcessAndSaveHTML(item.u, job, client, ua, retries, backoffMs, visitedAssets, assetAllowed)
 		if err != nil {
-			log.Printf("Ошибка обработки %s: %v", item.u.String(), err)
+			log.Printf("Error processing %s: %v", item.u.String(), err)
 			continue
 		}
 		pagesSaved++
 		if job.MaxPages > 0 && pagesSaved >= job.MaxPages {
-			log.Printf("Достигнут лимит страниц MaxPages=%d", job.MaxPages)
+			log.Printf("Reached page limit MaxPages=%d", job.MaxPages)
 			break
 		}
 
@@ -146,7 +146,8 @@ func bfsCrawl(job Job, client *http.Client, ua string, retries int, backoffMs in
 	return nil
 }
 
-// fetch, parse, download assets, rewrite, save
+// Fetch, parse, download assets, rewrite, save
+
 func fetchProcessAndSaveHTML(u *url.URL, job Job, client *http.Client, ua string, retries int, backoffMs int, visitedAssets map[string]bool, assetAllowed map[string]bool) ([]*url.URL, error) {
 	body, contentType, finalURL, err := httpGetWithRetry(client, ua, u, retries, backoffMs)
 	if err != nil {
@@ -161,16 +162,16 @@ func fetchProcessAndSaveHTML(u *url.URL, job Job, client *http.Client, ua string
 			return nil, err
 		}
 		if err := os.WriteFile(localPath, body, 0o644); err != nil {
-			return nil, fmt.Errorf("сохранение файла: %w", err)
+			return nil, fmt.Errorf("write file: %w", err)
 		}
-		log.Printf("Сохранён не-HTML ресурс: %s -> %s", finalURL.String(), localPath)
+		log.Printf("Saved non-HTML resource: %s -> %s", finalURL.String(), localPath)
 		return nil, nil
 	}
 
 	// HTML
 	doc, err := html.Parse(bytes.NewReader(body))
 	if err != nil {
-		return nil, fmt.Errorf("парсинг HTML: %w", err)
+		return nil, fmt.Errorf("parse HTML: %w", err)
 	}
 
 	// Collect links and assets
@@ -195,23 +196,23 @@ func fetchProcessAndSaveHTML(u *url.URL, job Job, client *http.Client, ua string
 
 			if !visitedAssets[aKey] {
 				if err := ensureDirForFile(localAssetPath); err != nil {
-					log.Printf("Ошибка каталога для ассета %s: %v", ar.absURL, err)
+					log.Printf("Asset directory error for %s: %v", ar.absURL, err)
 				} else {
 					content, _, _, err := httpGetWithRetry(client, ua, ar.absURL, retries, backoffMs)
 					if err != nil {
-						log.Printf("Ошибка скачивания ассета %s: %v", ar.absURL.String(), err)
+						log.Printf("Error fetching asset %s: %v", ar.absURL.String(), err)
 					} else {
 						if err := os.WriteFile(localAssetPath, content, 0o644); err != nil {
-							log.Printf("Ошибка сохранения ассета %s: %v", ar.absURL.String(), err)
+							log.Printf("Error writing asset %s: %v", ar.absURL.String(), err)
 						} else {
 							visitedAssets[aKey] = true
-							log.Printf("Сохранён ассет: %s -> %s", ar.absURL.String(), localAssetPath)
+							log.Printf("Saved asset: %s -> %s", ar.absURL.String(), localAssetPath)
 						}
 					}
 				}
 			}
 
-			// rewrite attribute to relative path even if failure? Only if file exists
+			// Rewrite attribute to relative path only if file exists
 			if fileExists(localAssetPath) {
 				rel, err := filepath.Rel(htmlDir, localAssetPath)
 				if err == nil {
@@ -227,17 +228,17 @@ func fetchProcessAndSaveHTML(u *url.URL, job Job, client *http.Client, ua string
 	}
 	var buf bytes.Buffer
 	if err := html.Render(&buf, doc); err != nil {
-		return nil, fmt.Errorf("рендер HTML: %w", err)
+		return nil, fmt.Errorf("render HTML: %w", err)
 	}
 	if err := os.WriteFile(htmlPath, buf.Bytes(), 0o644); err != nil {
-		return nil, fmt.Errorf("сохранение HTML: %w", err)
+		return nil, fmt.Errorf("write HTML: %w", err)
 	}
-	log.Printf("Сохранён HTML: %s -> %s", finalURL.String(), htmlPath)
+	log.Printf("Saved HTML: %s -> %s", finalURL.String(), htmlPath)
 
 	return pageLinks, nil
 }
 
-// ---------- HTML utilities ----------
+// HTML utilities
 
 func collectLinksAndAssets(doc *html.Node, base *url.URL) (pageLinks []*url.URL, assetRefs []assetRef) {
 	pageLinks = make([]*url.URL, 0, 64)
@@ -347,8 +348,8 @@ func getAttr(n *html.Node, key string) string {
 	return ""
 }
 
-// For srcset, we store all entries for later rewrite by grouping. To simplify,
-// we rewrite attribute value on each assetRef occurrence by rebuilding full srcset in setNodeAttrValue.
+// For srcset we parse "url [descriptor]" entries split by comma,
+// keep descriptor to be able to rebuild the attribute after rewriting URLs.
 type srcsetEntry struct {
 	url        string
 	descriptor string
@@ -381,20 +382,16 @@ func parseSrcset(val string) []srcsetEntry {
 
 func splitCSVRespectingSpaces(s string) []string {
 	// srcset uses comma-separated entries; commas inside URLs are rare and not special.
-	// So a simple split by comma is acceptable.
-	parts := strings.Split(s, ",")
-	return parts
+	return strings.Split(s, ",")
 }
 
-// set attribute value. For srcset, we need to rebuild combined value. We will append/replace progressively.
-// To ensure correctness, for srcset we rebuild from existing value and replace URL matches.
+// Set attribute value. For srcset, rebuild the whole attribute replacing the first entry.
 func setNodeAttrValue(n *html.Node, attrIndex int, newValue string, isSrcset bool, descriptor string) {
 	if !isSrcset {
 		n.Attr[attrIndex].Val = newValue
 		return
 	}
-	// Rebuild srcset from current value, replacing the first matching URL occurrence that corresponds to this node call.
-	// Simpler approach: if descriptor present, replace first entry with same descriptor; otherwise replace first entry.
+	// Rebuild srcset from current value, replacing the first entry (or by descriptor if provided)
 	old := n.Attr[attrIndex].Val
 	entries := parseSrcset(old)
 	rebuilt := make([]string, 0, len(entries))
@@ -413,7 +410,6 @@ func setNodeAttrValue(n *html.Node, attrIndex int, newValue string, isSrcset boo
 		v := strings.TrimSpace(strings.TrimSpace(e.url + " " + e.descriptor))
 		rebuilt = append(rebuilt, v)
 	}
-	// If nothing replaced (shouldn't happen), append
 	if !replaced {
 		if descriptor != "" {
 			rebuilt = append(rebuilt, strings.TrimSpace(strings.TrimSpace(newValue+" "+descriptor)))
@@ -424,7 +420,7 @@ func setNodeAttrValue(n *html.Node, attrIndex int, newValue string, isSrcset boo
 	n.Attr[attrIndex].Val = strings.Join(rebuilt, ", ")
 }
 
-// ---------- HTTP utilities ----------
+// HTTP utilities
 
 func httpGetWithRetry(client *http.Client, ua string, u *url.URL, maxRetries int, backoffMs int) ([]byte, string, *url.URL, error) {
 	var lastErr error
@@ -468,12 +464,12 @@ func httpGetWithRetry(client *http.Client, ua string, u *url.URL, maxRetries int
 		time.Sleep(time.Duration(backoffMs*(attempt+1)) * time.Millisecond)
 	}
 	if lastErr == nil {
-		lastErr = fmt.Errorf("неизвестная ошибка HTTP при запросе %s", u.String())
+		lastErr = fmt.Errorf("unknown HTTP error for %s", u.String())
 	}
 	return nil, "", u, lastErr
 }
 
-// ---------- Path and URL mapping ----------
+// Path and URL mapping
 
 func urlToLocalPath(u *url.URL, outDir string, isHTML bool) string {
 	hostPart := sanitizePathPart(u.Host)
@@ -497,8 +493,6 @@ func urlToLocalPath(u *url.URL, outDir string, isHTML bool) string {
 			if ext := path.Ext(base); ext == "" {
 				p = p + ".html"
 			}
-		} else {
-			// keep extension; if no extension, keep filename as is
 		}
 	}
 
@@ -531,7 +525,7 @@ func toURLPath(p string) string {
 	return filepath.ToSlash(p)
 }
 
-// ---------- Helpers ----------
+// Helpers
 
 func parseURL(s string) *url.URL {
 	u, err := url.Parse(s)
@@ -561,7 +555,7 @@ func resolveURL(base *url.URL, ref string) *url.URL {
 	if ref == "" {
 		return nil
 	}
-	// data URLs are ignored
+	// ignore data URLs
 	if strings.HasPrefix(ref, "data:") {
 		return nil
 	}
@@ -611,8 +605,6 @@ func isAssetKindAllowed(k assetRefKind, allowed map[string]bool) bool {
 		return allowed["font"]
 	case assetMEDIA:
 		return allowed["media"]
-	case assetOTHER:
-		return false
 	default:
 		return false
 	}

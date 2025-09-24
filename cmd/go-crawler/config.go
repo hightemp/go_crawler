@@ -6,8 +6,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// loadConfig загружает YAML-конфигурацию из файла.
-func loadConfig(path string) (*Config, error /* cmd/go-crawler/config.go:12 */) {
+// loadConfig loads YAML configuration from a file.
+func loadConfig(path string) (*Config, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err

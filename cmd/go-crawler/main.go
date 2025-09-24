@@ -15,12 +15,12 @@ const (
 
 func main() {
 	var cfgPath string
-	flag.StringVar(&cfgPath, "config", "config.yaml", "Путь к YAML конфигурации")
+	flag.StringVar(&cfgPath, "config", "config.yaml", "Path to YAML configuration")
 	flag.Parse()
 
 	cfg, err := loadConfig(cfgPath)
 	if err != nil {
-		log.Fatalf("Ошибка загрузки конфига: %v", err)
+		log.Fatalf("Failed to load config: %v", err)
 	}
 
 	timeout := defaultTimeoutSec
@@ -47,11 +47,11 @@ func main() {
 
 	for i, job := range cfg.Items {
 		if !job.Enabled {
-			log.Printf("Пропуск job #%d (disabled)", i)
+			log.Printf("Skipping job #%d (disabled)", i)
 			continue
 		}
 		if err := runJob(job, client, userAgent, retries, backoffMs); err != nil {
-			log.Printf("Ошибка выполнения job #%d: %v", i, err)
+			log.Printf("Error running job #%d: %v", i, err)
 		}
 	}
 }
