@@ -1,43 +1,4 @@
-# Binaries
 bin/
 build/
-dist/
 
-# Go artifacts
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
-*.test
-*.out
-*.cover
-coverage/
-profile.out
-
-# IDE/editor
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# Modules/workspaces
-vendor/
-go.work
-go.work.sum
-
-# Local configs/secrets
-.env
 config.yaml
-
-# Logs
-logs/
-*.log
-
-# Cache/temp
-.cache/
-tmp/
