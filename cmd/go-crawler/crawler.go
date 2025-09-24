@@ -264,11 +264,9 @@ func collectLinksAndAssets(doc *html.Node, base *url.URL) (pageLinks []*url.URL,
 				if idx, ok := findAttr(n, "href"); ok {
 					if u := resolveURL(base, n.Attr[idx].Val); u != nil {
 						k := assetKindByTag("link", rel, asAttr, u.Path)
-						if k != assetOTHER {
-							assetRefs = append(assetRefs, assetRef{
-								node: n, attrIndex: idx, absURL: u, kind: k,
-							})
-						}
+						assetRefs = append(assetRefs, assetRef{
+							node: n, attrIndex: idx, absURL: u, kind: k,
+						})
 					}
 				}
 			case "script":
@@ -605,6 +603,8 @@ func isAssetKindAllowed(k assetRefKind, allowed map[string]bool) bool {
 		return allowed["font"]
 	case assetMEDIA:
 		return allowed["media"]
+	case assetOTHER:
+		return allowed["other"]
 	default:
 		return false
 	}

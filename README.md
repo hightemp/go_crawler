@@ -22,7 +22,7 @@ items:
       - "https://example.com/"
     output_dir: "out/page_example"
     include_assets: true
-    asset_types: ["css", "js", "img"]  # css, js, img, font, media
+    asset_types: ["css", "js", "img"]  # css, js, img, font, media, other
     same_host_only: true
     max_depth: 0    # not used for page
     max_pages: 0    # not used for page
@@ -46,7 +46,7 @@ items:
       - "https://example.com/"
     output_dir: "out/site_example"
     include_assets: true
-    asset_types: ["css", "js", "img", "font", "media"]
+    asset_types: ["css", "js", "img", "font", "media", "other"]
     same_host_only: true
     max_depth: 3
     max_pages: 200
@@ -64,7 +64,7 @@ Field reference:
   - urls: list of absolute URLs to start from.
   - output_dir: target directory for saving files.
   - include_assets: download and rewrite assets in HTML.
-  - asset_types: subset of ["css","js","img","font","media"]; used only if include_assets is true. Default ["css","js","img"].
+  - asset_types: subset of ["css","js","img","font","media","other"]; "other" covers unrecognized assets (e.g., .ico, manifest.json via link); used only if include_assets is true. Default ["css","js","img"].
   - same_host_only: restrict crawl to hosts derived from the seed URLs (recommended for "site").
   - max_depth: integer depth limit for BFS (0 means unlimited).
   - max_pages: integer total page limit (0 means unlimited).

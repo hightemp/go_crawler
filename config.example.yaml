@@ -14,7 +14,7 @@ items:
       - "https://example.com/"
     output_dir: "out/page_example"
     include_assets: true
-    asset_types: ["css", "js", "img"]  # css, js, img, font, media
+    asset_types: ["css", "js", "img"]  # css, js, img, font, media, other
     same_host_only: true
     max_depth: 0    # not used for page
     max_pages: 0    # not used for page
@@ -38,7 +38,7 @@ items:
       - "https://example.com/"
     output_dir: "out/site_example"
     include_assets: true
-    asset_types: ["css", "js", "img", "font", "media"]
+    asset_types: ["css", "js", "img", "font", "media", "other"]
     same_host_only: true
     max_depth: 3
     max_pages: 200
