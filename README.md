@@ -13,17 +13,43 @@ http:
   max_retries: 2            # number of retries on errors
   retry_backoff_ms: 300     # backoff between retries (increasing per attempt)
 
+# Set of crawl jobs. Each job can be enabled/disabled, has a type and a list of URLs
 items:
+  # 1) Download a single page (type: page)
   - enabled: true
-    type: page              # page | pages | site
+    type: page                # page | pages | site
     urls:
       - "https://example.com/"
     output_dir: "out/page_example"
     include_assets: true
     asset_types: ["css", "js", "img"]  # css, js, img, font, media
     same_host_only: true
-    max_depth: 0
-    max_pages: 0
+    max_depth: 0    # not used for page
+    max_pages: 0    # not used for page
+
+  # 2) Crawl multiple pages by following links on the same host (type: pages)
+  - enabled: false
+    type: pages
+    urls:
+      - "https://example.com/"
+    output_dir: "out/pages_example"
+    include_assets: true
+    asset_types: ["css", "js", "img", "font"]
+    same_host_only: true
+    max_depth: 2     # crawl depth
+    max_pages: 50    # limit number of pages
+
+  # 3) Save a site (similar to pages, typically with same_host_only enabled)
+  - enabled: false
+    type: site
+    urls:
+      - "https://example.com/"
+    output_dir: "out/site_example"
+    include_assets: true
+    asset_types: ["css", "js", "img", "font", "media"]
+    same_host_only: true
+    max_depth: 3
+    max_pages: 200
 ```
 
 Field reference:
