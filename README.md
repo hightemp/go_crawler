@@ -94,3 +94,5 @@ Examples:
 ## License
 
 MIT
+
+![](https://asdertasd.site/counter/go_crawler)
