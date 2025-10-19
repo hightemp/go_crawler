@@ -17,8 +17,9 @@ type HTTPConfig struct {
 	UserAgent      string   `yaml:"user_agent"`
 	MaxRetries     int      `yaml:"max_retries"`
 	RetryBackoffMs int      `yaml:"retry_backoff_ms"`
-	Proxies        []string `yaml:"proxies"` // optional: list of proxy URLs (http, https, socks5, socks5h)
-	Workers        int      `yaml:"workers"` // optional: concurrent workers; if <=0 computed automatically
+	Proxies        []string `yaml:"proxies"`       // optional: list of proxy URLs (http, https, socks5, socks5h)
+	Workers        int      `yaml:"workers"`       // optional: concurrent page workers; if <=0 computed automatically
+	AssetWorkers   int      `yaml:"asset_workers"` // optional: concurrent asset workers; if <=0 computed automatically
 }
 
 // Job description

@@ -121,10 +121,13 @@ func buildTransport(entry proxyEntry, dialTimeout time.Duration) *http.Transport
 		Proxy:                 nil, // set below if HTTP proxy
 		DialContext:           baseDialer.DialContext,
 		ForceAttemptHTTP2:     true,
-		MaxIdleConns:          100,
+		MaxConnsPerHost:       64,
+		MaxIdleConns:          512,
+		MaxIdleConnsPerHost:   64,
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
+		ResponseHeaderTimeout: 15 * time.Second,
 	}
 
 	switch entry.typ {
@@ -157,4 +160,24 @@ func buildTransport(entry proxyEntry, dialTimeout time.Duration) *http.Transport
 		}
 	}
 	return tr
+}
+
+// NewDefaultTransport returns a tuned http.RoundTripper without a proxy.
+func NewDefaultTransport(timeoutSec int) http.RoundTripper {
+	baseDialer := &net.Dialer{
+		Timeout:   time.Duration(timeoutSec) * time.Second,
+		KeepAlive: 30 * time.Second,
+	}
+	return &http.Transport{
+		Proxy:                 nil,
+		DialContext:           baseDialer.DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxConnsPerHost:       64,
+		MaxIdleConns:          512,
+		MaxIdleConnsPerHost:   64,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		ResponseHeaderTimeout: 15 * time.Second,
+	}
 }

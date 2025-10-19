@@ -40,6 +40,9 @@ func main() {
 	}
 	if tr != nil {
 		client.Transport = tr
+	} else {
+		// Tuned default transport when proxies are not configured
+		client.Transport = NewDefaultTransport(timeout)
 	}
 
 	userAgent := cfg.HTTP.UserAgent
@@ -69,12 +72,25 @@ func main() {
 		}
 	}
 
+	// Determine default asset workers: if not set, compute from CPU
+	assetWorkers := cfg.HTTP.AssetWorkers
+	if assetWorkers <= 0 {
+		ncpu := runtime.NumCPU()
+		assetWorkers = ncpu * 8
+		if assetWorkers < 8 {
+			assetWorkers = 8
+		}
+		if assetWorkers > 128 {
+			assetWorkers = 128
+		}
+	}
+
 	for i, job := range cfg.Items {
 		if !job.Enabled {
 			log.Printf("Skipping job #%d (disabled)", i)
 			continue
 		}
-		if err := runJob(job, client, userAgent, retries, backoffMs, workers); err != nil {
+		if err := runJob(job, client, userAgent, retries, backoffMs, workers, assetWorkers); err != nil {
 			log.Printf("Error running job #%d: %v", i, err)
 		}
 	}

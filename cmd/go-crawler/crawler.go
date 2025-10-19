@@ -24,7 +24,7 @@ import (
 
 // Job runner and crawling core
 
-func runJob(job Job, client *http.Client, ua string, retries int, backoffMs int, workers int) error {
+func runJob(job Job, client *http.Client, ua string, retries int, backoffMs int, workers int, assetWorkers int) error {
 	if len(job.Urls) == 0 {
 		return fmt.Errorf("job without urls")
 	}
@@ -76,7 +76,7 @@ func runJob(job Job, client *http.Client, ua string, retries int, backoffMs int,
 			go func(u *url.URL) {
 				defer wg.Done()
 				defer func() { <-sem }()
-				if err := crawlSinglePage(u, job, client, ua, retries, backoffMs, visitedAssets, assetAllowed); err != nil {
+				if err := crawlSinglePage(u, job, client, ua, retries, backoffMs, visitedAssets, assetAllowed, assetWorkers); err != nil {
 					log.Printf("Error downloading page %s: %v", u.String(), err)
 				}
 			}(u)
@@ -86,7 +86,7 @@ func runJob(job Job, client *http.Client, ua string, retries int, backoffMs int,
 		if workers <= 0 {
 			workers = 1
 		}
-		if err := bfsCrawl(job, client, ua, retries, backoffMs, assetAllowed, allowedHosts, workers); err != nil {
+		if err := bfsCrawl(job, client, ua, retries, backoffMs, assetAllowed, allowedHosts, workers, assetWorkers); err != nil {
 			return err
 		}
 	default:
@@ -97,12 +97,12 @@ func runJob(job Job, client *http.Client, ua string, retries int, backoffMs int,
 
 // Crawling
 
-func crawlSinglePage(u *url.URL, job Job, client *http.Client, ua string, retries int, backoffMs int, visitedAssets *sync.Map, assetAllowed map[string]bool) error {
-	_, err := fetchProcessAndSaveHTML(u, job, client, ua, retries, backoffMs, visitedAssets, assetAllowed)
+func crawlSinglePage(u *url.URL, job Job, client *http.Client, ua string, retries int, backoffMs int, visitedAssets *sync.Map, assetAllowed map[string]bool, assetWorkers int) error {
+	_, err := fetchProcessAndSaveHTML(u, job, client, ua, retries, backoffMs, visitedAssets, assetAllowed, assetWorkers)
 	return err
 }
 
-func bfsCrawl(job Job, client *http.Client, ua string, retries int, backoffMs int, assetAllowed map[string]bool, allowedHosts map[string]bool, workers int) error {
+func bfsCrawl(job Job, client *http.Client, ua string, retries int, backoffMs int, assetAllowed map[string]bool, allowedHosts map[string]bool, workers int, assetWorkers int) error {
 	jobs := make(chan crawlQueueItem, 1024)
 	var visited sync.Map
 	visitedAssets := &sync.Map{}
@@ -154,7 +154,7 @@ func bfsCrawl(job Job, client *http.Client, ua string, retries int, backoffMs in
 						return
 					}
 
-					links, err := fetchProcessAndSaveHTML(item.u, job, client, ua, retries, backoffMs, visitedAssets, assetAllowed)
+					links, err := fetchProcessAndSaveHTML(item.u, job, client, ua, retries, backoffMs, visitedAssets, assetAllowed, assetWorkers)
 					if err != nil {
 						log.Printf("Error processing %s: %v", item.u.String(), err)
 						return
@@ -205,7 +205,7 @@ func bfsCrawl(job Job, client *http.Client, ua string, retries int, backoffMs in
 
 // Fetch, parse, download assets, rewrite, save
 
-func fetchProcessAndSaveHTML(u *url.URL, job Job, client *http.Client, ua string, retries int, backoffMs int, visitedAssets *sync.Map, assetAllowed map[string]bool) ([]*url.URL, error) {
+func fetchProcessAndSaveHTML(u *url.URL, job Job, client *http.Client, ua string, retries int, backoffMs int, visitedAssets *sync.Map, assetAllowed map[string]bool, assetWorkers int) ([]*url.URL, error) {
 	body, contentType, finalURL, err := httpGetWithRetry(client, ua, u, retries, backoffMs)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP GET: %w", err)
@@ -238,7 +238,15 @@ func fetchProcessAndSaveHTML(u *url.URL, job Job, client *http.Client, ua string
 	htmlPath := urlToLocalPath(finalURL, job.OutputDir, true)
 	htmlDir := filepath.Dir(htmlPath)
 
+	type assetTask struct {
+		ref            assetRef
+		localAssetPath string
+		key            string
+	}
+
 	if job.IncludeAssets {
+		// Build task list first (filtering by kind and validity)
+		tasks := make([]assetTask, 0, len(assetRefs))
 		for _, ar := range assetRefs {
 			if ar.absURL == nil {
 				continue
@@ -247,33 +255,55 @@ func fetchProcessAndSaveHTML(u *url.URL, job Job, client *http.Client, ua string
 			if !isAssetKindAllowed(kind, assetAllowed) {
 				continue
 			}
-			// asset download (best-effort dedupe)
 			aKey := canonicalAssetKey(ar.absURL)
 			localAssetPath := urlToLocalPath(ar.absURL, job.OutputDir, false)
+			tasks = append(tasks, assetTask{ref: ar, localAssetPath: localAssetPath, key: aKey})
+		}
 
-			if _, loaded := visitedAssets.Load(aKey); !loaded {
-				if err := ensureDirForFile(localAssetPath); err != nil {
-					log.Printf("Asset directory error for %s: %v", ar.absURL, err)
-				} else {
-					content, _, _, err := httpGetWithRetry(client, ua, ar.absURL, retries, backoffMs)
-					if err != nil {
-						log.Printf("Error fetching asset %s: %v", ar.absURL.String(), err)
-					} else {
-						if err := os.WriteFile(localAssetPath, content, 0o644); err != nil {
-							log.Printf("Error writing asset %s: %v", ar.absURL.String(), err)
-						} else {
-							visitedAssets.Store(aKey, true)
-							log.Printf("Saved asset: %s -> %s", ar.absURL.String(), localAssetPath)
-						}
-					}
-				}
+		// Download concurrently with limit
+		if assetWorkers <= 0 {
+			assetWorkers = 1
+		}
+		sem := make(chan struct{}, assetWorkers)
+		var wg sync.WaitGroup
+
+		for _, t := range tasks {
+			// Best-effort dedupe across whole crawl
+			if _, loaded := visitedAssets.LoadOrStore(t.key, false); loaded {
+				// Already scheduled or done elsewhere
+				continue
 			}
+			wg.Add(1)
+			sem <- struct{}{}
+			go func(t assetTask) {
+				defer wg.Done()
+				defer func() { <-sem }()
+				// Ensure path
+				if err := ensureDirForFile(t.localAssetPath); err != nil {
+					log.Printf("Asset directory error for %s: %v", t.ref.absURL, err)
+					return
+				}
+				content, _, _, err := httpGetWithRetry(client, ua, t.ref.absURL, retries, backoffMs)
+				if err != nil {
+					log.Printf("Error fetching asset %s: %v", t.ref.absURL.String(), err)
+					return
+				}
+				if err := os.WriteFile(t.localAssetPath, content, 0o644); err != nil {
+					log.Printf("Error writing asset %s: %v", t.ref.absURL.String(), err)
+					return
+				}
+				visitedAssets.Store(t.key, true)
+				log.Printf("Saved asset: %s -> %s", t.ref.absURL.String(), t.localAssetPath)
+			}(t)
+		}
+		wg.Wait()
 
-			// Rewrite attribute to relative path only if file exists
-			if fileExists(localAssetPath) {
-				rel, err := filepath.Rel(htmlDir, localAssetPath)
+		// Rewrite attributes for successfully saved files
+		for _, t := range tasks {
+			if fileExists(t.localAssetPath) {
+				rel, err := filepath.Rel(htmlDir, t.localAssetPath)
 				if err == nil {
-					setNodeAttrValue(ar.node, ar.attrIndex, toURLPath(rel), ar.isSrcset, ar.desc)
+					setNodeAttrValue(t.ref.node, t.ref.attrIndex, toURLPath(rel), t.ref.isSrcset, t.ref.desc)
 				}
 			}
 		}
