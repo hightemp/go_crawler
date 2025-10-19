@@ -27,8 +27,18 @@ func main() {
 	if cfg.HTTP.TimeoutSec > 0 {
 		timeout = cfg.HTTP.TimeoutSec
 	}
+
+	// Build HTTP client with optional proxy rotation transport
+	tr, perr := NewProxyPoolTransport(cfg.HTTP.Proxies, timeout)
+	if perr != nil {
+		log.Printf("Proxy configuration error, using direct connection: %v", perr)
+	}
+
 	client := &http.Client{
 		Timeout: time.Duration(timeout) * time.Second,
+	}
+	if tr != nil {
+		client.Transport = tr
 	}
 
 	userAgent := cfg.HTTP.UserAgent

@@ -12,6 +12,13 @@ http:
   user_agent: "go_crawler/0.1 (+https://example.local)"
   max_retries: 2            # number of retries on errors
   retry_backoff_ms: 300     # backoff between retries (increasing per attempt)
+  # Optional list of proxies to rotate between (http, https, socks5, socks5h)
+  # Example:
+  #   - "http://127.0.0.1:8080"
+  #   - "http://user:pass@127.0.0.1:8080"
+  #   - "socks5://127.0.0.1:1080"
+  #   - "socks5://user:pass@127.0.0.1:1080"
+  proxies: []
 
 # Set of crawl jobs. Each job can be enabled/disabled, has a type and a list of URLs
 items:
@@ -58,6 +65,7 @@ Field reference:
   - user_agent: string for User-Agent header.
   - max_retries: non-negative integer (default 0).
   - retry_backoff_ms: positive integer milliseconds (default 250).
+  - proxies: list of proxy URLs to rotate between; supports http, https, socks5, socks5h. Empty or omitted means direct connection.
 - items[] (job)
   - enabled: bool to toggle job.
   - type: "page" | "pages" | "site".

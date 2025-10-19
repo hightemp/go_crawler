@@ -4,6 +4,13 @@ http:
   user_agent: "go_crawler/0.1 (+https://example.local)"
   max_retries: 2
   retry_backoff_ms: 300
+  # Optional list of proxies to rotate between (http, https, socks5, socks5h)
+  # Examples:
+  #   - "http://127.0.0.1:8080"
+  #   - "http://user:pass@127.0.0.1:8080"
+  #   - "socks5://127.0.0.1:1080"
+  #   - "socks5://user:pass@127.0.0.1:1080"
+  proxies: []
 
 # Set of crawl jobs. Each job can be enabled/disabled, has a type and a list of URLs
 items:
