@@ -4,6 +4,7 @@ import (
 	"flag"
 	"log"
 	"net/http"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -55,12 +56,25 @@ func main() {
 		backoffMs = 250
 	}
 
+	// Determine default workers: if not set, compute from CPU
+	workers := cfg.HTTP.Workers
+	if workers <= 0 {
+		ncpu := runtime.NumCPU()
+		workers = ncpu * 4
+		if workers < 4 {
+			workers = 4
+		}
+		if workers > 64 {
+			workers = 64
+		}
+	}
+
 	for i, job := range cfg.Items {
 		if !job.Enabled {
 			log.Printf("Skipping job #%d (disabled)", i)
 			continue
 		}
-		if err := runJob(job, client, userAgent, retries, backoffMs); err != nil {
+		if err := runJob(job, client, userAgent, retries, backoffMs, workers); err != nil {
 			log.Printf("Error running job #%d: %v", i, err)
 		}
 	}

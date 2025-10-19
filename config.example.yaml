@@ -4,6 +4,8 @@ http:
   user_agent: "go_crawler/0.1 (+https://example.local)"
   max_retries: 2
   retry_backoff_ms: 300
+  # Optional number of concurrent workers; <=0 means auto (computed from CPU)
+  workers: 0
   # Optional list of proxies to rotate between (http, https, socks5, socks5h)
   # Examples:
   #   - "http://127.0.0.1:8080"

@@ -15,6 +15,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/net/html"
@@ -22,7 +24,7 @@ import (
 
 // Job runner and crawling core
 
-func runJob(job Job, client *http.Client, ua string, retries int, backoffMs int) error {
+func runJob(job Job, client *http.Client, ua string, retries int, backoffMs int, workers int) error {
 	if len(job.Urls) == 0 {
 		return fmt.Errorf("job without urls")
 	}
@@ -56,18 +58,35 @@ func runJob(job Job, client *http.Client, ua string, retries int, backoffMs int)
 
 	switch job.Type {
 	case "page":
+		// Параллельная обработка списка отдельных страниц
+		if workers <= 0 {
+			workers = 1
+		}
+		visitedAssets := &sync.Map{}
+		var wg sync.WaitGroup
+		sem := make(chan struct{}, workers)
 		for _, s := range job.Urls {
 			u := parseURL(s)
 			if u == nil {
 				log.Printf("Skipping invalid URL: %s", s)
 				continue
 			}
-			if err := crawlSinglePage(u, job, client, ua, retries, backoffMs, assetAllowed); err != nil {
-				log.Printf("Error downloading page %s: %v", u.String(), err)
-			}
+			wg.Add(1)
+			sem <- struct{}{}
+			go func(u *url.URL) {
+				defer wg.Done()
+				defer func() { <-sem }()
+				if err := crawlSinglePage(u, job, client, ua, retries, backoffMs, visitedAssets, assetAllowed); err != nil {
+					log.Printf("Error downloading page %s: %v", u.String(), err)
+				}
+			}(u)
 		}
+		wg.Wait()
 	case "pages", "site":
-		if err := bfsCrawl(job, client, ua, retries, backoffMs, assetAllowed, allowedHosts); err != nil {
+		if workers <= 0 {
+			workers = 1
+		}
+		if err := bfsCrawl(job, client, ua, retries, backoffMs, assetAllowed, allowedHosts, workers); err != nil {
 			return err
 		}
 	default:
@@ -78,77 +97,115 @@ func runJob(job Job, client *http.Client, ua string, retries int, backoffMs int)
 
 // Crawling
 
-func crawlSinglePage(u *url.URL, job Job, client *http.Client, ua string, retries int, backoffMs int, assetAllowed map[string]bool) error {
-	visitedAssets := make(map[string]bool)
+func crawlSinglePage(u *url.URL, job Job, client *http.Client, ua string, retries int, backoffMs int, visitedAssets *sync.Map, assetAllowed map[string]bool) error {
 	_, err := fetchProcessAndSaveHTML(u, job, client, ua, retries, backoffMs, visitedAssets, assetAllowed)
 	return err
 }
 
-func bfsCrawl(job Job, client *http.Client, ua string, retries int, backoffMs int, assetAllowed map[string]bool, allowedHosts map[string]bool) error {
-	queue := make([]crawlQueueItem, 0, 128)
-	visited := map[string]bool{}
-	visitedAssets := map[string]bool{}
+func bfsCrawl(job Job, client *http.Client, ua string, retries int, backoffMs int, assetAllowed map[string]bool, allowedHosts map[string]bool, workers int) error {
+	jobs := make(chan crawlQueueItem, 1024)
+	var visited sync.Map
+	visitedAssets := &sync.Map{}
 
+	var pagesSaved atomic.Int64
+	var stop int32
+
+	var inFlight sync.WaitGroup
+	// Close jobs channel when all enqueued work is drained
+	go func() {
+		inFlight.Wait()
+		close(jobs)
+	}()
+
+	// Seed initial URLs
 	for _, s := range job.Urls {
 		if u := parseURL(s); u != nil {
-			queue = append(queue, crawlQueueItem{u: u, depth: 0})
+			inFlight.Add(1)
+			jobs <- crawlQueueItem{u: u, depth: 0}
 		}
 	}
 
-	pagesSaved := 0
-	for len(queue) > 0 {
-		item := queue[0]
-		queue = queue[1:]
+	var workersWG sync.WaitGroup
+	workersWG.Add(workers)
+	for i := 0; i < workers; i++ {
+		go func() {
+			defer workersWG.Done()
+			for item := range jobs {
+				// Ensure to mark done for this item
+				func() {
+					defer inFlight.Done()
 
-		if job.MaxDepth > 0 && item.depth > job.MaxDepth {
-			continue
-		}
-		key := canonicalPageKey(item.u)
-		if visited[key] {
-			continue
-		}
-		visited[key] = true
+					// Global stop check (page limit reached)
+					if atomic.LoadInt32(&stop) == 1 {
+						return
+					}
 
-		// host filter
-		if job.SameHostOnly && !allowedHosts[strings.ToLower(item.u.Host)] {
-			continue
-		}
+					if job.MaxDepth > 0 && item.depth > job.MaxDepth {
+						return
+					}
 
-		links, err := fetchProcessAndSaveHTML(item.u, job, client, ua, retries, backoffMs, visitedAssets, assetAllowed)
-		if err != nil {
-			log.Printf("Error processing %s: %v", item.u.String(), err)
-			continue
-		}
-		pagesSaved++
-		if job.MaxPages > 0 && pagesSaved >= job.MaxPages {
-			log.Printf("Reached page limit MaxPages=%d", job.MaxPages)
-			break
-		}
+					// host filter
+					if job.SameHostOnly && !allowedHosts[strings.ToLower(item.u.Host)] {
+						return
+					}
 
-		// Enqueue next-level links
-		for _, ln := range links {
-			if ln == nil {
-				continue
+					key := canonicalPageKey(item.u)
+					if _, loaded := visited.LoadOrStore(key, true); loaded {
+						return
+					}
+
+					links, err := fetchProcessAndSaveHTML(item.u, job, client, ua, retries, backoffMs, visitedAssets, assetAllowed)
+					if err != nil {
+						log.Printf("Error processing %s: %v", item.u.String(), err)
+						return
+					}
+
+					v := pagesSaved.Add(1)
+					if job.MaxPages > 0 && int(v) >= job.MaxPages {
+						log.Printf("Reached page limit MaxPages=%d", job.MaxPages)
+						atomic.StoreInt32(&stop, 1)
+						return
+					}
+
+					// Enqueue next-level links
+					if atomic.LoadInt32(&stop) == 1 {
+						return
+					}
+					for _, ln := range links {
+						if ln == nil {
+							continue
+						}
+						if !isHTTP(ln) {
+							continue
+						}
+						if job.SameHostOnly && !allowedHosts[strings.ToLower(ln.Host)] {
+							continue
+						}
+						nextDepth := item.depth + 1
+						if job.MaxDepth > 0 && nextDepth > job.MaxDepth {
+							continue
+						}
+						// Avoid obvious duplicates in queue (best-effort)
+						k := canonicalPageKey(ln)
+						if _, seen := visited.Load(k); seen {
+							continue
+						}
+						inFlight.Add(1)
+						jobs <- crawlQueueItem{u: ln, depth: nextDepth}
+					}
+				}()
 			}
-			if !isHTTP(ln) {
-				continue
-			}
-			if job.SameHostOnly && !allowedHosts[strings.ToLower(ln.Host)] {
-				continue
-			}
-			k := canonicalPageKey(ln)
-			if !visited[k] {
-				queue = append(queue, crawlQueueItem{u: ln, depth: item.depth + 1})
-			}
-		}
+		}()
 	}
 
+	// Wait for workers to finish
+	workersWG.Wait()
 	return nil
 }
 
 // Fetch, parse, download assets, rewrite, save
 
-func fetchProcessAndSaveHTML(u *url.URL, job Job, client *http.Client, ua string, retries int, backoffMs int, visitedAssets map[string]bool, assetAllowed map[string]bool) ([]*url.URL, error) {
+func fetchProcessAndSaveHTML(u *url.URL, job Job, client *http.Client, ua string, retries int, backoffMs int, visitedAssets *sync.Map, assetAllowed map[string]bool) ([]*url.URL, error) {
 	body, contentType, finalURL, err := httpGetWithRetry(client, ua, u, retries, backoffMs)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP GET: %w", err)
@@ -190,11 +247,11 @@ func fetchProcessAndSaveHTML(u *url.URL, job Job, client *http.Client, ua string
 			if !isAssetKindAllowed(kind, assetAllowed) {
 				continue
 			}
-			// asset download (dedupe)
+			// asset download (best-effort dedupe)
 			aKey := canonicalAssetKey(ar.absURL)
 			localAssetPath := urlToLocalPath(ar.absURL, job.OutputDir, false)
 
-			if !visitedAssets[aKey] {
+			if _, loaded := visitedAssets.Load(aKey); !loaded {
 				if err := ensureDirForFile(localAssetPath); err != nil {
 					log.Printf("Asset directory error for %s: %v", ar.absURL, err)
 				} else {
@@ -205,7 +262,7 @@ func fetchProcessAndSaveHTML(u *url.URL, job Job, client *http.Client, ua string
 						if err := os.WriteFile(localAssetPath, content, 0o644); err != nil {
 							log.Printf("Error writing asset %s: %v", ar.absURL.String(), err)
 						} else {
-							visitedAssets[aKey] = true
+							visitedAssets.Store(aKey, true)
 							log.Printf("Saved asset: %s -> %s", ar.absURL.String(), localAssetPath)
 						}
 					}

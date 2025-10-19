@@ -12,6 +12,8 @@ http:
   user_agent: "go_crawler/0.1 (+https://example.local)"
   max_retries: 2            # number of retries on errors
   retry_backoff_ms: 300     # backoff between retries (increasing per attempt)
+  # Optional number of concurrent workers; <=0 means auto (computed from CPU)
+  workers: 0
   # Optional list of proxies to rotate between (http, https, socks5, socks5h)
   # Example:
   #   - "http://127.0.0.1:8080"
@@ -65,6 +67,7 @@ Field reference:
   - user_agent: string for User-Agent header.
   - max_retries: non-negative integer (default 0).
   - retry_backoff_ms: positive integer milliseconds (default 250).
+  - workers: number of concurrent workers; <=0 auto-computed by CPU. Default formula: min(max(4, NumCPU*4), 64).
   - proxies: list of proxy URLs to rotate between; supports http, https, socks5, socks5h. Empty or omitted means direct connection.
 - items[] (job)
   - enabled: bool to toggle job.
