@@ -20,6 +20,7 @@ type HTTPConfig struct {
 	Proxies        []string `yaml:"proxies"`       // optional: list of proxy URLs (http, https, socks5, socks5h)
 	Workers        int      `yaml:"workers"`       // optional: concurrent page workers; if <=0 computed automatically
 	AssetWorkers   int      `yaml:"asset_workers"` // optional: concurrent asset workers; if <=0 computed automatically
+	MaxBodySize    int64    `yaml:"max_body_size"` // optional: max body size in bytes
 }
 
 // Job description
@@ -33,6 +34,7 @@ type Job struct {
 	SameHostOnly  bool     `yaml:"same_host_only"`
 	MaxDepth      int      `yaml:"max_depth"` // 0 - no limit
 	MaxPages      int      `yaml:"max_pages"` // 0 - no limit
+	ConsiderQuery bool     `yaml:"consider_query"`
 }
 
 type crawlQueueItem struct {
@@ -58,6 +60,7 @@ type assetRef struct {
 	absURL    *url.URL
 	kind      assetRefKind
 	// srcset
-	isSrcset bool
-	desc     string // srcset descriptor (e.g., "1x", "480w")
+	isSrcset    bool
+	desc        string // srcset descriptor (e.g., "1x", "480w")
+	srcsetIndex int
 }

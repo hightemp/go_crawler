@@ -85,12 +85,14 @@ func main() {
 		}
 	}
 
+	maxBodySize := cfg.HTTP.MaxBodySize
+
 	for i, job := range cfg.Items {
 		if !job.Enabled {
 			log.Printf("Skipping job #%d (disabled)", i)
 			continue
 		}
-		if err := runJob(job, client, userAgent, retries, backoffMs, workers, assetWorkers); err != nil {
+		if err := runJob(job, client, userAgent, retries, backoffMs, workers, assetWorkers, maxBodySize); err != nil {
 			log.Printf("Error running job #%d: %v", i, err)
 		}
 	}

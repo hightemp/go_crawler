@@ -8,6 +8,8 @@ http:
   workers: 0
   # Optional number of concurrent asset workers; <=0 means auto (computed from CPU)
   asset_workers: 0
+  # Optional max body size in bytes (0 = no limit)
+  max_body_size: 0 # 10MB
   # Optional list of proxies to rotate between (http, https, socks5, socks5h)
   # Examples:
   #   - "http://127.0.0.1:8080"
@@ -29,6 +31,7 @@ items:
     same_host_only: true
     max_depth: 0    # not used for page
     max_pages: 0    # not used for page
+    consider_query: false # if true, /page?id=1 and /page?id=2 are different pages
 
   # 2) Crawl multiple pages by following links on the same host (type: pages)
   - enabled: false
@@ -41,6 +44,7 @@ items:
     same_host_only: true
     max_depth: 2     # crawl depth
     max_pages: 50    # limit number of pages
+    consider_query: true
 
   # 3) Save a site (similar to pages, typically with same_host_only enabled)
   - enabled: false
@@ -53,3 +57,4 @@ items:
     same_host_only: true
     max_depth: 3
     max_pages: 200
+    consider_query: true
